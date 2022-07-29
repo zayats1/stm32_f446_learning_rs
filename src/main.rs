@@ -3,32 +3,53 @@
 
 use cortex_m::asm::delay;
 use cortex_m_rt::entry;
-use stm32f4::stm32f446;
-
 use panic_halt as _;
+use cortex_m_semihosting::hprintln;
 
-
-const DELAY_CYCLES:u32 = 5000_000;
+const DELAY_CYCLES: u32 = 500_000;
 
 #[entry]
 fn main() -> ! {
-    let peripherals = stm32f446::Peripherals::take().unwrap();
-    let gpioa = peripherals.GPIOA;
-    let rcc = peripherals.RCC;
-
-    // PA5 enabled and configured as slow output without pull up or pull down
-    rcc.ahb1enr.modify(|_,w|w.gpioaen().enabled());
-    gpioa.moder.modify(|_,w|w.moder5().output());
-    gpioa.ospeedr.modify(|_,w|w.ospeedr5().low_speed());
-    gpioa.pupdr.modify(|_,w|w.pupdr5().floating());
-
-    loop{
-        gpioa.bsrr.write(|w|w.bs5().set());  // led on
-        delay(DELAY_CYCLES);
-        gpioa.bsrr.write(|w|w.br5().reset());  // led off
+    the_adc::init();
+    loop {
+        hprintln!("{}","Hello, world!");
         delay(DELAY_CYCLES);
     }
 }
+
+mod the_adc {
+    use stm32f4::stm32f446;
+    use stm32f4::stm32f446::Peripherals;
+
+    pub fn init() {
+        let p: Peripherals = stm32f446::Peripherals::take().unwrap();
+        let rcc = p.RCC;
+        rcc.ahb1enr.modify(|_, w| w.gpioaen().enabled());
+        rcc.apb2enr.modify(|_, w| w.adc1en().enabled());
+
+
+        let adc = p.ADC_COMMON;
+        adc.ccr.modify(|_, w| w.adcpre().div4());
+
+        let adc1 = p.ADC1;
+        adc1.cr2.write(|w| w.cont().continuous());
+        adc1.cr2.write(|w|w.align().set_bit());
+        adc1.cr2.modify(|_, w| w.adon().enabled());
+
+        let gpioa = p.GPIOA;
+        gpioa.moder.modify(|_,w|w.moder5().output());
+        gpioa.pupdr.modify(|_,w|w.pupdr1().floating());
+    }
+
+    pub fn read() -> u16 {
+        let p: Peripherals = stm32f446::Peripherals::take().unwrap();
+        let adc1 = p.ADC1;
+        adc1.cr2.write(|w|w.swstart().set_bit());
+        let value = adc1.dr.read().data().bits();
+        return value;
+    }
+}
+
 
 
 
